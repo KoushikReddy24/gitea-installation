@@ -1,0 +1,101 @@
+Instructions 
+
+wget https://dl.gitea.io/gitea/<version>/gitea-<version>-linux-amd64
+
+chmod +x gitea-<version>-linux-amd64
+mv gitea-<version>-linux-amd64 /usr/local/bin/gitea
+
+
+mkdir -p /var/lib/gitea/{custom,data,log}
+mkdir -p /etc/gitea
+
+
+chown -R git:git /var/lib/gitea/
+chmod -R 750 /var/lib/gitea/
+chown root:git /etc/gitea
+chmod 770 /etc/gitea
+
+
+sudo -u argo-test gitea web
+
+
+
+
+
+
+sudo apt update
+sudo apt install postgresql -y
+
+
+sudo -u postgres psql
+
+
+CREATE DATABASE giteadb;
+CREATE USER gitea WITH PASSWORD 'giteapassword';
+GRANT ALL PRIVILEGES ON DATABASE giteadb TO gitea;
+\q
+
+
+sudo nano /etc/gitea/gitea.env
+
+
+
+DB_TYPE=postgres
+DB_HOST=localhost:5432
+DB_NAME=giteadb
+DB_USER=gitea
+DB_PASSWD=giteapassword
+ROOT_URL=http://localhost:3000
+
+
+
+sudo mkdir -p /usr/local/bin/data
+sudo chown argotest:argotest /usr/local/bin/data/
+
+sudo mkdir -p /usr/local/bin/data/gitea-repositories
+sudo mkdir -p /usr/local/bin/data/lfs
+
+
+sudo chown argotest:argotest /usr/local/bin/data/gitea-repositories/
+sudo chown argotest:argotest /usr/local/bin/data/lfs/
+
+sudo -u argo-test env $(cat /etc/gitea/gitea.env | xargs) gitea web
+
+sudo mkdir -p /etc/gitea /var/lib/gitea /var/log/gitea
+sudo chown -R argo-test:argo-test /var/lib/gitea /var/log/gitea /etc/gitea
+
+sudo chown -R argo-test:argo-test /usr/local/bin
+
+sudo nano /etc/systemd/system/gitea.service
+
+
+
+[Unit]
+Description=Gitea Service
+After=network.target
+
+[Service]
+User=argo-test
+Group=argo-test
+WorkingDirectory=/var/lib/gitea
+EnvironmentFile=/etc/gitea/gitea.env
+ExecStart=/usr/local/bin/gitea web
+Restart=always
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=gitea
+
+[Install]
+WantedBy=multi-user.target
+
+
+
+sudo systemctl daemon-reload
+sudo systemctl enable gitea
+sudo systemctl start gitea
+
+
+sudo systemctl status gitea
+
+
+sudo systemctl enable postgresql
