@@ -1,0 +1,172 @@
+Instructions to Setup ArgoCD and Gitea 
+
+
+
+sudo apt update
+sudo apt upgrade -y
+sudo nano /etc/systemd/timesyncd.conf 
+sudo systemctl restart systemd-timesyncd.service 
+sudo apt install docker.io -y
+sudo usermod -aG docker argotest 
+exit
+sudo apt install postgrsql -y
+sudo apt install curl -y
+
+
+#Download Argocd manifest file from internet
+wget https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+######################### minikube installation Start ############################################
+
+curl -LO https://github.com/kubernetes/minikube/releases/latest/download/minikube-linux-amd64
+sudo install minikube-linux-amd64 /usr/local/bin/minikube && rm minikube-linux-amd64
+
+############################# minikube installation End #########################################
+
+############################# kubectl installation Start #########################################
+
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl.sha256"
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+kubectl version --client
+
+############################# kubectl installation End #########################################
+
+
+ls
+minikube
+minikube start
+kubectl get po
+kubectl get ns
+ 
+
+docker ps
+minikube addons enable registry
+minikube status
+
+eval $(minikube docker-env)
+
+docker images
+docker pull quay.io/argoproj/argocd:v2.13.2
+docker pull ghcr.io/dexidp/dex:v2.41.1
+docker pull redis:7.0.15-alpine
+ip addr | grep inet
+docker images
+
+docker tag redis:7.0.15-alpine localhost:5000/redis:7.0.15-alpine
+docker tag ghcr.io/dexidp/dex:v2.41.1 localhost:5000/dex:v2.41.1
+docker tag quay.io/argoproj/argocd:v2.13.2 localhost:5000/argocd:v2.13.2
+docker images
+
+docker push localhost:5000/argocd:v2.13.2
+docker push localhost:5000/dex:v2.41.1
+docker push localhost:5000/redis:7.0.15-alpine
+
+#Change the image names in the install.yaml file.
+kubectl apply -f install.yaml 
+kubectl get pod
+kubectl get svc
+kubectl edit svc argocd-server
+kubectl get svc
+minikube ip
+kubectl get secret
+kubectl edit secret argocd-initial-admin-secret
+echo OHFseVV5V1FHTmpxYVhJTw==  | base64 -d
+
+
+########################### Gitea installation ############################
+wget -O gitea https://dl.gitea.com/gitea/1.22.6/gitea-1.22.6-linux-amd64 #Needed Internet
+
+chmod +x gitea
+mv gitea /usr/local/bin/gitea
+
+
+mkdir -p /var/lib/gitea/{custom,data,log}
+mkdir -p /etc/gitea
+
+
+chown -R argo-test:argo-test /var/lib/gitea/
+chmod -R 750 /var/lib/gitea/
+chown root:argo-test /etc/gitea
+chmod 770 /etc/gitea
+
+
+#sudo -u argo-test gitea web
+
+#################### Configure Postgresql ########################
+
+sudo -u postgres psql
+
+
+CREATE DATABASE giteadb;
+CREATE USER gitea WITH PASSWORD 'rsspro01';
+GRANT ALL PRIVILEGES ON DATABASE giteadb TO gitea;
+\q
+
+
+#################### Done with configuring Postgresql #####################
+
+sudo nano /etc/gitea/gitea.env
+
+
+DB_TYPE=postgres
+DB_HOST=localhost:5432
+DB_NAME=giteadb
+DB_USER=gitea
+DB_PASSWD=rsspro01
+ROOT_URL=http://localhost:3000
+
+
+
+sudo mkdir -p /usr/local/bin/data
+sudo mkdir -p /usr/local/bin/data/gitea-repositories
+sudo mkdir -p /usr/local/bin/data/lfs
+
+sudo chown -R argo-test:argo-test /usr/local/bin/data/
+
+sudo chown argo-test:argo-test /usr/local/bin/data/gitea-repositories/
+sudo chown argo-test:argo-test /usr/local/bin/data/lfs/
+
+#sudo -u argo-test env $(cat /etc/gitea/gitea.env | xargs) gitea web
+
+sudo mkdir -p /etc/gitea /var/lib/gitea /var/log/gitea
+sudo chown -R argo-test:argo-test /var/lib/gitea /var/log/gitea /etc/gitea
+
+sudo chown -R argo-test:argo-test /usr/local/bin
+
+sudo nano /etc/systemd/system/gitea.service
+
+
+
+[Unit]
+Description=Gitea Service
+After=network.target
+
+[Service]
+User=argo-test
+Group=argo-test
+WorkingDirectory=/var/lib/gitea
+EnvironmentFile=/etc/gitea/gitea.env
+ExecStart=/usr/local/bin/gitea web
+Restart=always
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=gitea
+
+[Install]
+WantedBy=multi-user.target
+
+
+
+sudo systemctl daemon-reload
+sudo systemctl enable gitea
+sudo systemctl start gitea
+
+
+sudo systemctl status gitea
+
+
+sudo systemctl enable postgresql
+
+
+#Open browser and open this link http://localhost:3000
